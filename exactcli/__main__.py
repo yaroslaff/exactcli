@@ -109,10 +109,9 @@ def upload():
         print(e)
         sys.exit(1)
 
-    print(result)
-
     # r = exact.query(ds_name, expr='True', limit=2)
     # print(len(r['result']))
+    print(result)
 
 
 
@@ -167,7 +166,9 @@ def main():
     except requests.RequestException as e:
         if e.response.status_code == 422:
             print(e.response.json())
-    
+        else:
+            print("HTTP exception:", e)
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()
