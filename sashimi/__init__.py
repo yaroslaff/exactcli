@@ -32,6 +32,16 @@ class SashimiClient():
         r.raise_for_status()
         return(r.json())
 
+    def rm(self, ds_name: str):
+
+        if ds_name is None :
+            raise ValueError('Need ds_name')
+
+        payload = dict(name=ds_name)
+
+        r = requests.delete(self.project_url, headers=self.headers, data=json.dumps(payload))
+        r.raise_for_status()        
+        return r.text
 
     def put(self, ds_name: str, dataset: list):
 
@@ -88,3 +98,34 @@ class SashimiClient():
         r = requests.post(url, data=json.dumps(payload), headers=headers)
         r.raise_for_status()
         return(r.json())
+
+    def delete(self, ds_name: str, expr: str): 
+        url = self.ds_url(ds_name)
+        payload = {
+            'op': 'delete',
+            'expr': expr
+        }
+        r = requests.patch(url, data=json.dumps(payload), headers=self.headers)
+        r.raise_for_status()
+        return r.text
+
+    def update(self, ds_name: str, field: str, update_expr: str, where_expr: str):
+        url = self.ds_url(ds_name)
+        payload = {
+            'op': 'update',
+            'update': field,
+            'expr': where_expr,
+            'update_expr': update_expr
+        }
+        r = requests.patch(url, data=json.dumps(payload), headers=self.headers)
+        r.raise_for_status()
+        return r.text
+
+    def insert(self, ds_name: str, data: dict):
+        url = self.ds_url(ds_name)
+        payload = {
+            'data': json.dumps(data)
+        }
+        r = requests.put(url, data=json.dumps(payload), headers=self.headers)
+        r.raise_for_status()
+        return r.text

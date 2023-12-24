@@ -3,21 +3,19 @@
 ## Install
 
 ~~~
-pipx exactcli
+pipx install sashimi
 ~~~
 
 But you may use pip as well.
 
 ## Config example
 
-Config file is either `.env` in current directory or override it with `EXACT_DOTENV=/path/file` env variable.
+Config file is either `.env` in current directory or override it with `SASHIMI_DOTENV=/path/file` env variable.
 
 config example:
 ~~~
-EXACT_URL=http://localhost:8000/
-EXACT_PROJECT=sandbox
-EXACT_TOKEN=envtoken
-EXACT_DSNAME=products
+SASHIMI_PROJECT=http://localhost:8000/ds/sandbox
+SASHIMI_TOKEN=envtoken
 ~~~
 These defaults will make your commands shorter.
 

@@ -9,6 +9,7 @@ from typing_extensions import Annotated
 from typing import Optional
 from rich import print
 from rich.console import Console
+from rich.panel import Panel
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
 err_console = Console(stderr=True)
@@ -24,6 +25,85 @@ dsarg = Annotated[str, typer.Argument(
         )]
 
 #@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+
+@app.command()
+def rm(ds: dsarg):
+    """ Remove dataset from Sashimi """
+    try:
+        result = sashimi.rm(ds_name=ds)
+    except requests.RequestException as e:        
+        err_console.print(f'{e!r}')
+        err_console.print(f'{e.response.text!r}')
+        sys.exit(1)
+
+    print(result)
+
+@app.command()
+def delete(ds: dsarg,       
+    expr: Annotated[str, typer.Option('--expr', '-e',
+        help='Pythonic expression, instead of filter. E.g.: brand="Apple" and price<=100',        
+        )],
+    ):
+    """ Delete records from Sashimi dataset """
+    try:
+        result = sashimi.delete(ds_name=ds, expr=expr)
+    except requests.RequestException as e:        
+        err_console.print(f'{e!r}')
+        err_console.print(f'{e.response.text!r}')
+        sys.exit(1)
+
+    print(result)
+
+@app.command()
+def update(ds: dsarg,
+    field: Annotated[str, typer.Argument(help='field to update, e.g. "price" or "onstock"')],
+    expr: Annotated[str, typer.Argument(
+        help='Pythonic expression for selected records. E.g.: 200 or price+20 or False',
+        )],
+    where: Annotated[str, typer.Argument(
+        help='Pythonic expression, like SQL WHERE. E.g.: brand="Apple" and price<=100',        
+        )],
+    ):
+    """ Update records in Sashimi dataset 
+    Examples:
+    update products onstock False 'id=123'
+    update products price price+20 'id=123'
+    """
+    try:
+        result = sashimi.update(ds_name=ds, field=field, where_expr=where, update_expr=expr)
+    except requests.RequestException as e:        
+        err_console.print(f'{e!r}')
+        err_console.print(f'{e.response.text!r}')
+        sys.exit(1)
+
+    print(result)
+
+
+@app.command()
+def insert(ds: dsarg,
+    datastr: Annotated[str, typer.Argument(help='field to update, e.g. "price" or "onstock"')]
+    ):
+    """ Insert record into Sashimi dataset 
+    """
+
+    try:
+        data = json.loads(datastr)
+    except json.JSONDecodeError as e:
+        err_console.print(f'JSON error: {e}')
+        sys.exit(1)
+    
+    print("json ok")
+
+    try:
+        result = sashimi.insert(ds_name=ds, data=data)
+    except requests.RequestException as e:        
+        err_console.print(f'{e!r}')
+        err_console.print(f'{e.response.text!r}')
+        sys.exit(1)
+
+    print(result)
+
+
 @app.command()
 def query(
     ds: dsarg,
@@ -82,12 +162,20 @@ def query(
     """ I can do dict/list comprehensions, I can do ugly code """
     fdict={ field: value for field, value in filter_convert(filter) }
 
-    r = sashimi.query(ds, filter=fdict, 
+    try:
+        r = sashimi.query(ds, filter=fdict, 
                            expr=expr,
                            limit=limit, 
                            sort=sort, reverse=reverse,
                            fields=fields)
     
+    except requests.RequestException as e:
+        err_console.print(f'{e!r}')
+        err_console.print(f'{e.response.text!r}')
+        sys.exit(1)
+
+
+
     if result:
         print(r['result'])
     else:
@@ -96,9 +184,10 @@ def query(
 
 @app.callback(
         context_settings={"help_option_names": ["-h", "--help"]})
+
 def callback(ctx: typer.Context,
-    project: Annotated[str, typer.Option(envvar='SASHIMI_PROJECT', rich_help_panel='Config')],
-    token: Annotated[str, typer.Option(envvar='SASHIMI_TOKEN', rich_help_panel='Config')]
+    project: Annotated[str, typer.Option(envvar='SASHIMI_PROJECT', rich_help_panel='Config (.env file)', help='URL of Sashimi project, e.g.: http://localhost:8000/ds/sandbox')],
+    token: Annotated[str, typer.Option(envvar='SASHIMI_TOKEN', rich_help_panel='Config (.env file)')]
     ):
     """
     Client for Sashimi headless CMS
@@ -110,7 +199,7 @@ def callback(ctx: typer.Context,
     sashimi = SashimiClient(project_url=project, token=token)
 
 
-@app.command()
+@app.command(rich_help_panel='Commands (run command with --help)')
 def info():
     # check_arguments("info")
     result = sashimi.info()
@@ -248,7 +337,7 @@ def main():
     # get_args()
 
     # exact = SashimiClient(base_url=args.server, project=args.project, token=args.token)
-    
+    # typer.rich_utils.Panel = Panel.fit
     app()
     sys.exit(0)
 
