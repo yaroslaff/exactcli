@@ -5,16 +5,14 @@ import json
 
 __version__ = '0.0.1'
 
-user_agent = f'exact_client/{__version__}'
+user_agent = f'sashimi_client/{__version__}'
 
 
-class ExactClient():
+class SashimiClient():
     base_url = None
     
-    def __init__(self, base_url: str, project: str, token: str):
-        self.base_url = base_url
-        self.project = project
-        self.project_url = urljoin(base_url, f'/ds/{project}')
+    def __init__(self, project_url: str, token: str):
+        self.project_url = project_url
         self.token = token
 
         self.headers = {
@@ -40,11 +38,9 @@ class ExactClient():
         if ds_name is None or dataset is None:
             raise ValueError('Need both ds_name and dataset')
 
-        url = self.ds_url(ds_name)
+        payload = dict(ds=dataset, name=ds_name)
 
-        payload = dict(ds=dataset)
-
-        r = requests.put(url, headers=self.headers, data=json.dumps(payload))
+        r = requests.put(self.project_url, headers=self.headers, data=json.dumps(payload))
         r.raise_for_status()
         return r.text
 

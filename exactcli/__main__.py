@@ -4,62 +4,98 @@ import argparse
 import dotenv
 import sys
 import requests
+import typer
+from typing_extensions import Annotated
+from typing import Optional
+from rich import print
+from rich.console import Console
 
-from . import ExactClient
+app = typer.Typer(pretty_exceptions_show_locals=False)
+err_console = Console(stderr=True)
+
+from . import SashimiClient
 
 args = None
-exact: ExactClient = None
+sashimi: SashimiClient = None
+
+dsarg = Annotated[str, typer.Argument(
+        metavar='DATASET_NAME',
+        help='dataset name'
+        )]
+
+#@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+@app.command()
+def query(
+    ds: dsarg,
+    filter: Annotated[list[str], typer.Argument(help='list of filters like: category="laptop" price__lt=100')] = None,
+    expr: Annotated[str, typer.Option('--expr', '-e',
+        help='Pythonic expression, instead of filter. E.g.: brand="Apple" and price<=100',
+        )] = None,
+    limit: Annotated[int, typer.Option(
+        help='limit results to N ',
+        )] = None,
+    sort: Annotated[str, typer.Option(
+        help='sort by this field',
+        )] = None,
+    reverse: Annotated[bool, typer.Option(
+        '--reverse / ', 
+        help='reverse sort order',
+        )] = False,
+    fields: Annotated[list[str], typer.Option('-f', '--fields',
+        help='retrieve only these fields (repeat)',        
+        )] = None,
+    result: Annotated[bool, typer.Option(
+        '-r / ', '--result / ',
+        help='print results only',
+        )] = False,
+
+    ):
+    """
+    Query sashimi dataset. Example
+    """
+
+    def filter_convert(flist: list[str]):        
+        sepsuffix = {
+            '>=': '__ge',
+            '<=': '__le',
+            '=': '',
+            '>': '__gt',
+            '<': '__lt'
+        }
+
+        for f in flist:
+            for sep in sepsuffix:
+                if sep in f:
+                    k, v = f.split(sep, maxsplit=1)                    
+                    try:
+                        vv = json.loads(v)
+                    except json.JSONDecodeError as e:
+                        err_console.print(f'Invalid filter: {f!r}')
+                        sys.exit(1)
+                    kk = k + sepsuffix[sep]
+                    yield kk, vv
+                    break
+            else:                
+                raise ValueError(f'Not found any separator in {f!r}')
 
 
-def check_arguments(fn: str):
+    """ I can do dict/list comprehensions, I can do ugly code """
+    fdict={ field: value for field, value in filter_convert(filter) }
+
+    r = sashimi.query(ds, filter=fdict, 
+                           expr=expr,
+                           limit=limit, 
+                           sort=sort, reverse=reverse,
+                           fields=fields)
     
-    checks = {
-        "upload": ["token", "ds"],
-        "expr": ["token", "ds", "exprfilter"],
-        "info": ["token"]
-    }
+    if result:
+        print(r['result'])
+    else:
+        print(r)
 
-    # checks common for all functions
-    if not args.server:
-        print("Need --server (or $EXACT_URL)")
-        sys.exit(1)
-
-    if not args.server:
-        print("Need --server (or $EXACT_URL)")
-        sys.exit(1)
-
-    if not args.project:
-        print("Need --project (or $EXACT_PROJECT)")
-        sys.exit(1)
+    return
 
 
-    # specific checks
-    checklist = checks[fn]
-
-    for ch in checklist:
-
-        if ch == "ds":
-            if args.ds is None:
-                print("need --ds")
-                sys.exit(1)
-
-        elif ch == "token":
-            if args.token is None:
-                print("need --token (or $EXACT_TOKEN)")
-                sys.exit(1)
-
-        elif ch == "exprfilter":
-            if args.token is None:
-                print("need --expr or --filter")
-                sys.exit(1)
-
-        else:
-            print(f"Do not know how to check {ch!r}")
-
-def expr():
-
-    # print(args.filter)
-    check_arguments("expr")
 
     filter = {}
     if args.filter:
@@ -71,22 +107,65 @@ def expr():
     print(json.dumps(result, sort_keys=True, indent=4))
 
 
+    sp = subparsers.add_parser('query', aliases=['q'], parents=[p], conflict_handler='resolve', help='query dataset')
+    sp.add_argument('expr', metavar='EXPRESSION', help='Expression like \'True\' or \'id==1\' or \'Brand == "Apple" and price < 1000\'')
+    sp.add_argument('--filter', nargs='*', metavar="KEY=VALUE", help='series key=value like: brand="Apple" price__lt=1000')
+
+
+
+
+
+
+
+
+
+
+
+@app.callback(
+        context_settings={"help_option_names": ["-h", "--help"]})
+def callback(ctx: typer.Context,
+    project: Annotated[str, typer.Option(envvar='SASHIMI_PROJECT', rich_help_panel='Config')],
+    token: Annotated[str, typer.Option(envvar='SASHIMI_TOKEN', rich_help_panel='Config')]
+    ):
+    """
+    Client for Sashimi headless CMS
+    """
+    global sashimi
+
+    # typer.echo(f"About to execute command: {ctx.invoked_subcommand}")
+
+    sashimi = SashimiClient(project_url=project, token=token)
+
+
+@app.command()
 def info():
-    check_arguments("info")
-    result = exact.info()
+    # check_arguments("info")
+    result = sashimi.info()
     print(json.dumps(result, sort_keys=True, indent=4))
 
+@app.command()
+def upload(
+    file: Annotated[typer.FileText, typer.Argument(
+        metavar='FILE.json',
+        help='JSON dataset to upload (list of dicts, or use --key)')],
+    ds_name: dsarg,
+    keypath: Annotated[Optional[list[str]], typer.Option(
+        '--key',
+        metavar='KEY',
+        help='list of keys to dive-in to dataset in JSON',
+        )] = None
+    ):
 
-def upload():
-    check_arguments('upload')
-
+    """
+    Upload JSON dataset to Sashimi project. Example: sashimi upload file.json mydataset
+    """
+   
     # read file
-    with open(args.upload) as fh:
-        dataset = json.load(fh)
+    dataset = json.load(file)
 
-    if args.keypath:
+    if keypath:
         try:
-            for key in args.keypath:
+            for key in keypath:
                     dataset = dataset[key]
         except KeyError as e:
             print("Not found key", e)
@@ -104,9 +183,10 @@ def upload():
 
     print(f"# dataset: {len(dataset)} records")
     try:
-        result = exact.put(args.ds, dataset=dataset)
-    except ValueError as e:
+        result = sashimi.put(ds_name, dataset=dataset)
+    except (ValueError, requests.RequestException) as e:
         print(e)
+        print(e.response.text)
         sys.exit(1)
 
     # r = exact.query(ds_name, expr='True', limit=2)
@@ -114,48 +194,91 @@ def upload():
     print(result)
 
 
+def make_parser():
+
+    def_url = os.getenv('SASHIMI_URL')
+    def_project = os.getenv('SASHIMI_PROJECT')
+    def_dsname = os.getenv('SASHIMI_DSNAME')
+    def_token = os.getenv('SASHIMI_TOKEN')
+
+    p = argparse.ArgumentParser(description='Sashimi CLI client', formatter_class=argparse.RawTextHelpFormatter)
+    p.epilog = 'use "SUBCOMMAND --help", e.g. "query --help", "upload -h"'
+
+
+    # p.add_argument("-h", "--help", metavar='SECTION', nargs='?', const='all', help="show help for section or 'all'")
+    # p.add_argument("--examples",  action='store_true', help="show simple examples")
+
+
+    g = p.add_argument_group('Target specification (use .env)')
+    g.add_argument('-s', '--server', metavar='SERVER', default=def_url, help=argparse.SUPPRESS) #help='Exact server url, e.g. https://exact.www-security.com/')
+    g.add_argument('-p', '--project', metavar='PROJECTNAME', default=def_project, help=argparse.SUPPRESS)
+    g.add_argument('--ds', '--dataset', metavar='DSNAME', default=def_dsname, help=argparse.SUPPRESS)
+    g.add_argument('--token', metavar='TOKEN', default=def_token, help=argparse.SUPPRESS)
+
+
+    """ subparsers """
+    subparsers = p.add_subparsers(help='Subcommands', dest='subcommand')
+    sp = subparsers.add_parser('info', parents=[p], conflict_handler='resolve', help='info about current project')
+
+
+    sp = subparsers.add_parser('upload', aliases=['put', 'up'], parents=[p], conflict_handler='resolve', help='upload file to Sashimi')
+    sp.add_argument('file')
+
+
+    sp = subparsers.add_parser('query', aliases=['q'], parents=[p], conflict_handler='resolve', help='query dataset')
+    sp.add_argument('expr', metavar='EXPRESSION', help='Expression like \'True\' or \'id==1\' or \'Brand == "Apple" and price < 1000\'')
+    sp.add_argument('--filter', nargs='*', metavar="KEY=VALUE", help='series key=value like: brand="Apple" price__lt=1000')
+    sp.add_argument('--limit', type=int, metavar='NUM', help='Limit')
+    sp.add_argument('--sort', metavar='FIELD', help='Sort by this field')
+    sp.add_argument('--reverse', default=False, action='store_true', help='reverse order for sort')
+    sp.add_argument('--fields', metavar='FIELD', nargs='+', help='return only these fields')
+
+    sp = subparsers.add_parser('examples', parents=[p], conflict_handler='resolve', help='show examples')
+
+    return p
+
+
+def examples():
+    examples = """
+Configuration stored in file .env:
+
+SASHIMI_URL=https://exact.www-security.com/
+SASHIMI_PROJECT=sandbox
+SASHIMI_DATASET=products
+SASHIMI_TOKEN=mytoken
+
+You may override values from .env file with environment variables or options: --url --project --dataset (--ds) and --token
+"""
+    print(examples)
+
 
 def get_args():
     global args
-    def_url = os.getenv('EXACT_URL')
-    def_project = os.getenv('EXACT_PROJECT')
-    def_dsname = os.getenv('EXACT_DSNAME')
-    def_token = os.getenv('EXACT_TOKEN')
     
-    parser = argparse.ArgumentParser(description='Exact CLI client')
-    g = parser.add_argument_group('Target specification')
-    g.add_argument('-s', '--server', metavar='SERVER', default=def_url, help='Exact server url, e.g. https://exact.www-security.com/')
-    g.add_argument('-p', '--project', metavar='PROJECTNAME', default=def_project, help='Project url, e.g. https://exact.www-security.com/ds/sandbox')
-    g.add_argument('--ds', metavar='DSNAME', default=def_dsname, help='Dataset name')
-    g.add_argument('--token', metavar='TOKEN', default=def_token, help='Access token')
+    me = "exactcli"
 
-    g = parser.add_argument_group('Upload JSON')
-    g.add_argument('-u', '--upload', metavar='file.json', help='File to upload')
-    g.add_argument('--keypath', metavar='KEY', nargs="+", help='keypath (if needed)')
-
-    g = parser.add_argument_group('Query dataset')
-    g.add_argument('--expr', metavar='EXPRESSION', help='Expression like \'True\' or \'id==1\' or \'Brand == "Apple" and price < 1000\'')
-    g.add_argument('--filter', nargs='*', metavar="KEY=VALUE", help='series key=value like: brand="Apple" price__lt=1000')
-    g.add_argument('--limit', type=int, metavar='NUM', help='Limit')
-    g.add_argument('--sort', metavar='FIELD', help='Sort by this field')
-    g.add_argument('--reverse', default=False, action='store_true', help='reverse order for sort')
-    g.add_argument('--fields', metavar='FIELD', nargs='+', help='return only these fields')
-
-    g = parser.add_argument_group('Other')
-    g.add_argument('--info', default=False, action='store_true', help='Get project info from server')
+    parser = make_parser()
 
     args = parser.parse_args()
+    
+    print(args)
+    if args.subcommand == 'examples':
+        examples()
+        sys.exit(0)
     return args
 
 def main():
     global exact
 
-    dotenv_file = os.getenv('EXACT_DOTENV', '.env')
+    dotenv_file = os.getenv('SASHIMI_DOTENV', '.env')
     dotenv.load_dotenv(dotenv_file)
-    get_args()
+    # get_args()
 
-    exact = ExactClient(base_url=args.server, project=args.project, token=args.token)
+    # exact = SashimiClient(base_url=args.server, project=args.project, token=args.token)
     
+    app()
+    sys.exit(0)
+
     try:
         if args.upload:
             upload()
