@@ -93,33 +93,6 @@ def query(
     else:
         print(r)
 
-    return
-
-
-
-    filter = {}
-    if args.filter:
-        for pair in args.filter:
-            key, value = pair.split('=')
-            filter[key] = json.loads(value)
-
-    result = exact.query(args.ds, expr=args.expr, filter=filter, fields=args.fields, limit=args.limit, sort=args.sort, reverse=args.reverse)
-    print(json.dumps(result, sort_keys=True, indent=4))
-
-
-    sp = subparsers.add_parser('query', aliases=['q'], parents=[p], conflict_handler='resolve', help='query dataset')
-    sp.add_argument('expr', metavar='EXPRESSION', help='Expression like \'True\' or \'id==1\' or \'Brand == "Apple" and price < 1000\'')
-    sp.add_argument('--filter', nargs='*', metavar="KEY=VALUE", help='series key=value like: brand="Apple" price__lt=1000')
-
-
-
-
-
-
-
-
-
-
 
 @app.callback(
         context_settings={"help_option_names": ["-h", "--help"]})
