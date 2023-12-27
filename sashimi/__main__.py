@@ -1,17 +1,27 @@
 import os
 import json
-import argparse
+import datetime
 import dotenv
 import sys
+import time
 import requests
 import typer
 from typing_extensions import Annotated
 from typing import Optional
+
 from rich import print
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress import track
 
-app = typer.Typer(pretty_exceptions_show_locals=False)
+from sqlalchemy import create_engine
+from sqlalchemy.engine.row import RowMapping
+import sqlalchemy as sa
+
+app = typer.Typer(pretty_exceptions_show_locals=False, 
+                  # rich_markup_mode="rich"
+                  rich_markup_mode="markdown"
+                  )
 err_console = Console(stderr=True)
 
 from . import SashimiClient
@@ -26,7 +36,10 @@ dsarg = Annotated[str, typer.Argument(
 
 #@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 
-@app.command()
+panel_write="'Write' commands (rarely needed, use upload/import instead)"
+panel_main="Main commands, each has its own help, e.g. sashimi upload --help"
+
+@app.command(rich_help_panel=panel_main)
 def rm(ds: dsarg):
     """ Remove dataset from Sashimi """
     try:
@@ -38,7 +51,7 @@ def rm(ds: dsarg):
 
     print(result)
 
-@app.command()
+@app.command(rich_help_panel=panel_write)
 def delete(ds: dsarg,       
     expr: Annotated[str, typer.Option('--expr', '-e',
         help='Pythonic expression, instead of filter. E.g.: brand="Apple" and price<=100',        
@@ -54,7 +67,7 @@ def delete(ds: dsarg,
 
     print(result)
 
-@app.command()
+@app.command(rich_help_panel=panel_write)
 def update(ds: dsarg,
     field: Annotated[str, typer.Argument(help='field to update, e.g. "price" or "onstock"')],
     expr: Annotated[str, typer.Argument(
@@ -79,20 +92,16 @@ def update(ds: dsarg,
     print(result)
 
 
-@app.command()
+@app.command(help="Insert JSON record into Sashimi dataset", rich_help_panel=panel_write)
 def insert(ds: dsarg,
     datastr: Annotated[str, typer.Argument(help='field to update, e.g. "price" or "onstock"')]
     ):
-    """ Insert record into Sashimi dataset 
-    """
 
     try:
         data = json.loads(datastr)
     except json.JSONDecodeError as e:
         err_console.print(f'JSON error: {e}')
-        sys.exit(1)
-    
-    print("json ok")
+        sys.exit(1)    
 
     try:
         result = sashimi.insert(ds_name=ds, data=data)
@@ -104,12 +113,27 @@ def insert(ds: dsarg,
     print(result)
 
 
-@app.command()
+
+
+@app.command(rich_help_panel=panel_main,
+             help="Query Sashimi dataset",
+             epilog="""~~~shell\n
+    # get by id:\n
+    sashimi query products id=42\n\n\n
+    # simple search:\n
+    sashimi query products 'price<1000' 'category="smartphones"' 'brand=["Apple", "Huawei"]'\n\n\n
+    # same search but with pythonic expression:\n
+    sashimi query products --expr 'price < 1000 and category=="smartphones" and brand in ["Apple", "Huawei"]'\n\n\n
+    # aggregation:\n
+    sashimi query products --discard 'category="smartphones"' -a min:price -a max:price -a distinct:brand\n
+    ~~~"""
+)
+
 def query(
     ds: dsarg,
     filter: Annotated[list[str], typer.Argument(help='list of filters like: category="laptop" price__lt=100')] = None,
     expr: Annotated[str, typer.Option('--expr', '-e',
-        help='Pythonic expression, instead of filter. E.g.: brand="Apple" and price<=100',
+        help='Pythonic expression, instead of filter. E.g.: \'brand="Apple" and price<=100\'',
         )] = None,
     limit: Annotated[int, typer.Option(
         help='limit results to N ',
@@ -124,6 +148,13 @@ def query(
     fields: Annotated[list[str], typer.Option('-f', '--fields',
         help='retrieve only these fields (repeat)',        
         )] = None,
+    aggregate: Annotated[list[str], typer.Option('-a', '--aggregate',
+        help='aggregate functions (min/max/sum/avg/distinct), e.g. min:price, distinct:brand'
+    )] = None,
+    discard: Annotated[bool, typer.Option(
+        '--discard / ', '-d / ',
+        help='discard results',
+        )] = False,
     result: Annotated[bool, typer.Option(
         '-r / ', '--result / ',
         help='print results only',
@@ -131,7 +162,7 @@ def query(
 
     ):
     """
-    Query sashimi dataset. Example
+    Query sashimi dataset. 
     """
 
     def filter_convert(flist: list[str]):        
@@ -167,7 +198,9 @@ def query(
                            expr=expr,
                            limit=limit, 
                            sort=sort, reverse=reverse,
-                           fields=fields)
+                           fields=fields,
+                           discard=discard,
+                           aggregate=aggregate)
     
     except requests.RequestException as e:
         err_console.print(f'{e!r}')
@@ -199,13 +232,80 @@ def callback(ctx: typer.Context,
     sashimi = SashimiClient(project_url=project, token=token)
 
 
-@app.command(rich_help_panel='Commands (run command with --help)')
+@app.command(rich_help_panel=panel_main)
 def info():
+    """ Info about project """
     # check_arguments("info")
     result = sashimi.info()
     print(json.dumps(result, sort_keys=True, indent=4))
 
-@app.command()
+
+
+@app.command(name='import', rich_help_panel=panel_main)
+def dbimport(
+    db: Annotated[str, typer.Argument(
+        metavar='database',
+        help='db url, example: mysql://scott:tiger@127.0.0.1/contacts')],
+    sql: Annotated[str, typer.Argument(
+        metavar='SELECT',
+        help='SELECT * FROM mytable')],
+    ds_name: dsarg,
+    ):
+
+    """
+    Upload database content to Sashimi project.
+    """
+    import_start = time.time()
+
+    datetime_fmt = "%d/%m/%Y %H:%M:%S"
+
+    def make_record(r: RowMapping):
+        outdict = dict(r)
+        for k, v in outdict.items():
+            if isinstance(v, (int, str, type(None))):
+                pass
+            elif isinstance(v, datetime.datetime):
+                outdict[k] = v.strftime('%d/%m/%Y %H:%M:%S')
+            elif isinstance(v, datetime.date):
+                outdict[k] = v.strftime('%d/%m/%Y')
+            elif v.__class__.__name__ == 'Decimal':
+                outdict[k] = float(v)
+            else:
+                print(v)
+                print(type(v))
+                print(v.__class__.__name__)
+                raise ValueError(f'Do not know how to process type {type(v)} for field {k}, value: {v!r}')
+
+        return outdict
+
+
+    assert(sql is not None)
+    engine = create_engine(db)
+    with engine.begin() as conn:
+        qry = sa.text(sql)
+        resultset = conn.execute(qry)
+
+        # dataset = [ dict(x) for x in resultset.mappings().all() ]
+        dataset = [ dict(make_record(x)) for x in track(resultset.mappings().all(), total=resultset.rowcount, description="Processing...") ]
+
+    print(f"# Loaded from db dataset of {len(dataset)} records in {time.time() - import_start:.2f} seconds")
+    try:
+        result = sashimi.put(ds_name, dataset=dataset)
+    except (ValueError, requests.RequestException) as e:
+        print(e)
+        print(e.response.text)
+        sys.exit(1)
+
+    print(result)
+
+
+   
+
+
+@app.command(rich_help_panel=panel_main, help='Upload JSON dataset to Sashimi project',
+             epilog="""~~~shell\n
+sashimi upload file.json mydataset\n
+~~~""")
 def upload(
     file: Annotated[typer.FileText, typer.Argument(
         metavar='FILE.json',
@@ -256,79 +356,6 @@ def upload(
     print(result)
 
 
-def make_parser():
-
-    def_url = os.getenv('SASHIMI_URL')
-    def_project = os.getenv('SASHIMI_PROJECT')
-    def_dsname = os.getenv('SASHIMI_DSNAME')
-    def_token = os.getenv('SASHIMI_TOKEN')
-
-    p = argparse.ArgumentParser(description='Sashimi CLI client', formatter_class=argparse.RawTextHelpFormatter)
-    p.epilog = 'use "SUBCOMMAND --help", e.g. "query --help", "upload -h"'
-
-
-    # p.add_argument("-h", "--help", metavar='SECTION', nargs='?', const='all', help="show help for section or 'all'")
-    # p.add_argument("--examples",  action='store_true', help="show simple examples")
-
-
-    g = p.add_argument_group('Target specification (use .env)')
-    g.add_argument('-s', '--server', metavar='SERVER', default=def_url, help=argparse.SUPPRESS) #help='Exact server url, e.g. https://exact.www-security.com/')
-    g.add_argument('-p', '--project', metavar='PROJECTNAME', default=def_project, help=argparse.SUPPRESS)
-    g.add_argument('--ds', '--dataset', metavar='DSNAME', default=def_dsname, help=argparse.SUPPRESS)
-    g.add_argument('--token', metavar='TOKEN', default=def_token, help=argparse.SUPPRESS)
-
-
-    """ subparsers """
-    subparsers = p.add_subparsers(help='Subcommands', dest='subcommand')
-    sp = subparsers.add_parser('info', parents=[p], conflict_handler='resolve', help='info about current project')
-
-
-    sp = subparsers.add_parser('upload', aliases=['put', 'up'], parents=[p], conflict_handler='resolve', help='upload file to Sashimi')
-    sp.add_argument('file')
-
-
-    sp = subparsers.add_parser('query', aliases=['q'], parents=[p], conflict_handler='resolve', help='query dataset')
-    sp.add_argument('expr', metavar='EXPRESSION', help='Expression like \'True\' or \'id==1\' or \'Brand == "Apple" and price < 1000\'')
-    sp.add_argument('--filter', nargs='*', metavar="KEY=VALUE", help='series key=value like: brand="Apple" price__lt=1000')
-    sp.add_argument('--limit', type=int, metavar='NUM', help='Limit')
-    sp.add_argument('--sort', metavar='FIELD', help='Sort by this field')
-    sp.add_argument('--reverse', default=False, action='store_true', help='reverse order for sort')
-    sp.add_argument('--fields', metavar='FIELD', nargs='+', help='return only these fields')
-
-    sp = subparsers.add_parser('examples', parents=[p], conflict_handler='resolve', help='show examples')
-
-    return p
-
-
-def examples():
-    examples = """
-Configuration stored in file .env:
-
-SASHIMI_URL=https://exact.www-security.com/
-SASHIMI_PROJECT=sandbox
-SASHIMI_DATASET=products
-SASHIMI_TOKEN=mytoken
-
-You may override values from .env file with environment variables or options: --url --project --dataset (--ds) and --token
-"""
-    print(examples)
-
-
-def get_args():
-    global args
-    
-    me = "exactcli"
-
-    parser = make_parser()
-
-    args = parser.parse_args()
-    
-    print(args)
-    if args.subcommand == 'examples':
-        examples()
-        sys.exit(0)
-    return args
-
 def main():
     global exact
 
@@ -339,21 +366,6 @@ def main():
     # exact = SashimiClient(base_url=args.server, project=args.project, token=args.token)
     # typer.rich_utils.Panel = Panel.fit
     app()
-    sys.exit(0)
-
-    try:
-        if args.upload:
-            upload()
-        elif args.info:
-            info()
-        else:
-            expr()
-    except requests.RequestException as e:
-        if e.response.status_code == 422:
-            print(e.response.json())
-        else:
-            print("HTTP exception:", e)
-        sys.exit(1)
 
 if __name__ == '__main__':
     main()

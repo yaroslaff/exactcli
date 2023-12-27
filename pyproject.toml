@@ -14,7 +14,10 @@ dependencies = [
     'requests',
     'typer==0.9.0',
     'python-dotenv',
-    'rich==13.7.0'
+    'rich==13.7.0',
+    'SQLAlchemy',
+    'mysqlclient',
+    'psycopg2'
 ]
 
 authors = [

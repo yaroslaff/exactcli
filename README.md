@@ -19,6 +19,15 @@ SASHIMI_TOKEN=envtoken
 ~~~
 These defaults will make your commands shorter.
 
+## Database support
+~~~
+# postgresql
+pip install psycopg2
+
+# mariadb / mysql
+pip install mysqlclient
+~~~
+
 ## Usage
 
 Get info about your project and datasets

@@ -75,7 +75,7 @@ class SashimiClient():
         if reverse:
             payload['reverse'] = reverse
 
-        if limit:
+        if limit is not None:
             payload['limit'] = limit
 
         if offset:
