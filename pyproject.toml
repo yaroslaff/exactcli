@@ -16,8 +16,6 @@ dependencies = [
     'python-dotenv',
     'rich==13.7.0',
     'SQLAlchemy',
-    'mysqlclient',
-    'psycopg2'
 ]
 
 authors = [
@@ -39,6 +37,14 @@ Issues = "https://github.com/yaroslaff/sashimi/issues"
 
 [project.scripts]
 sashimi = "sashimi:__main__.main"
+
+[project.optional-dependencies]
+mysql = [
+    'mysqlclient'
+]
+postgresql = [
+  'psycopg2'  
+]
 
 [tool.hatch.version]
 path = 'sashimi/__init__.py'

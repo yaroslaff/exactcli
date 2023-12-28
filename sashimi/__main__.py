@@ -265,9 +265,14 @@ def info():
 @app.command(name='import', rich_help_panel=panel_main,
              help='Upload database content to Sashimi project',
              epilog="""
+            Do not forget to install proper python packages for SQLAlchemy if you want to import from mysql/postgresql/... databases. Sqlite3 support is built-in. 
+
              ~~~shell\n
              # import all books from mysql/mariadb, no password\n
              sashimi import mysql://scott@localhost/libro 'SELECT * FROM libro' libro\n
+             \n
+             # sqlite db libro.db in current directory\n
+             sashimi import sqlite:///libro.db 'SELECT * FROM libro' libro\n
              \n
              # import all cheap books from postgresql\n
              sashimi import postgresql://scott:tiger@localhost/libro 'SELECT * FROM libro WHERE price<20' libro\n
@@ -302,7 +307,7 @@ def dbimport(
                 outdict[k] = v.strftime('%d/%m/%Y %H:%M:%S')
             elif isinstance(v, datetime.date):
                 outdict[k] = v.strftime('%d/%m/%Y')
-            elif v.__class__.__name__ == 'Decimal':
+            elif v.__class__.__name__ in ['float', 'Decimal']:
                 outdict[k] = float(v)
             else:
                 print(v)
@@ -341,13 +346,8 @@ def dbimport(
 sashimi upload file.json mydataset\n
 ~~~""")
 def upload(
-    #file: Annotated[typer.FileText, typer.Argument(
-    #    metavar='FILE.json',
-    #    help='JSON dataset to upload (list of dicts, or use --key)')],
-    file: Annotated[Path, typer.Argument(
+    file: Annotated[typer.FileText, typer.Argument(
         metavar='FILE.json',
-        file_okay=True,
-        dir_okay=True,
         help='JSON dataset to upload (list of dicts, or use --key)')],
     ds_name: dsarg,
     keypath: Annotated[Optional[list[str]], typer.Option(
