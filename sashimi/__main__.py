@@ -6,6 +6,7 @@ import sys
 import time
 import requests
 import typer
+from pathlib import Path
 from typing_extensions import Annotated
 from typing import Optional
 
@@ -19,9 +20,10 @@ from sqlalchemy.engine.row import RowMapping
 import sqlalchemy as sa
 
 app = typer.Typer(pretty_exceptions_show_locals=False, 
-                  # rich_markup_mode="rich"
-                  rich_markup_mode="markdown"
-                  )
+    # rich_markup_mode="rich"
+    no_args_is_help=True,                
+    rich_markup_mode="markdown"
+    )
 err_console = Console(stderr=True)
 
 from . import SashimiClient
@@ -30,8 +32,9 @@ args = None
 sashimi: SashimiClient = None
 
 dsarg = Annotated[str, typer.Argument(
-        metavar='DATASET_NAME',
-        help='dataset name'
+        metavar='DATASET',
+        help='dataset name',
+        show_default=False
         )]
 
 #@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
@@ -67,23 +70,34 @@ def delete(ds: dsarg,
 
     print(result)
 
-@app.command(rich_help_panel=panel_write)
+@app.command(rich_help_panel=panel_write,
+            help='Update records in Sashimi dataset',
+            epilog="""~~~shell\n
+            # product with id 42 is out of stock!\n
+            sashimi update products onstock False 'id=42'\n
+            sashimi update products price price+20 'id=123'\n
+            ~~~
+"""
+             )
 def update(ds: dsarg,
-    field: Annotated[str, typer.Argument(help='field to update, e.g. "price" or "onstock"')],
-    expr: Annotated[str, typer.Argument(
-        help='Pythonic expression for selected records. E.g.: 200 or price+20 or False',
+    field: Annotated[str, 
+                     typer.Argument(help='field to update, e.g. "price" or "onstock"', show_default=False)],
+    data: Annotated[str, typer.Argument(
+        help='New value (json) for this field in selected records. E.g.: 200 or False or "New title"',
+        show_default=False,
         )],
     where: Annotated[str, typer.Argument(
-        help='Pythonic expression, like SQL WHERE. E.g.: brand="Apple" and price<=100',        
+        help='Pythonic filter expression (like SQL WHERE). E.g.: \'brand="Apple" and price<=100\'',
+        show_default=False,
         )],
     ):
     """ Update records in Sashimi dataset 
     Examples:
-    update products onstock False 'id=123'
-    update products price price+20 'id=123'
+    update products onstock False 'id=12'
+    update products price 99.99 'id=12'
     """
     try:
-        result = sashimi.update(ds_name=ds, field=field, where_expr=where, update_expr=expr)
+        result = sashimi.update(ds_name=ds, field=field, where_expr=where, data=data)
     except requests.RequestException as e:        
         err_console.print(f'{e!r}')
         err_console.print(f'{e.response.text!r}')
@@ -131,33 +145,40 @@ def insert(ds: dsarg,
 
 def query(
     ds: dsarg,
-    filter: Annotated[list[str], typer.Argument(help='list of filters like: category="laptop" price__lt=100')] = None,
+    filter: Annotated[list[str], typer.Argument(help="""list of filters like: 'category="laptop"' 'price<1000'""", show_default=False)] = None,
     expr: Annotated[str, typer.Option('--expr', '-e',
-        help='Pythonic expression, instead of filter. E.g.: \'brand="Apple" and price<=100\'',
+        help='Pythonic expression (instead of filter) E.g.: \'brand="Apple" and price<=100\'',
+        show_default=False,
         )] = None,
     limit: Annotated[int, typer.Option(
         help='limit results to N ',
+        show_default=False
         )] = None,
     sort: Annotated[str, typer.Option(
         help='sort by this field',
+        show_default=False,
         )] = None,
     reverse: Annotated[bool, typer.Option(
         '--reverse / ', 
         help='reverse sort order',
         )] = False,
     fields: Annotated[list[str], typer.Option('-f', '--fields',
-        help='retrieve only these fields (repeat)',        
+        help='retrieve only these fields (repeat)',
+        show_default=False,
         )] = None,
     aggregate: Annotated[list[str], typer.Option('-a', '--aggregate',
-        help='aggregate functions (min/max/sum/avg/distinct), e.g. min:price, distinct:brand'
+        help='aggregate functions (min/max/sum/avg/distinct), e.g. min:price, distinct:brand',
+        show_default=False
     )] = None,
     discard: Annotated[bool, typer.Option(
         '--discard / ', '-d / ',
         help='discard results',
+        show_default=False,
         )] = False,
     result: Annotated[bool, typer.Option(
         '-r / ', '--result / ',
         help='print results only',
+        show_default=False,
         )] = False,
 
     ):
@@ -241,14 +262,27 @@ def info():
 
 
 
-@app.command(name='import', rich_help_panel=panel_main)
+@app.command(name='import', rich_help_panel=panel_main,
+             help='Upload database content to Sashimi project',
+             epilog="""
+             ~~~shell\n
+             # import all books from mysql/mariadb, no password\n
+             sashimi import mysql://scott@localhost/libro 'SELECT * FROM libro' libro\n
+             \n
+             # import all cheap books from postgresql\n
+             sashimi import postgresql://scott:tiger@localhost/libro 'SELECT * FROM libro WHERE price<20' libro\n
+             ~~~
+             """)
 def dbimport(
     db: Annotated[str, typer.Argument(
         metavar='database',
-        help='db url, example: mysql://scott:tiger@127.0.0.1/contacts')],
+        help='db url, example: mysql://scott:tiger@127.0.0.1/contacts',
+        show_default=False,
+        )],
     sql: Annotated[str, typer.Argument(
         metavar='SELECT',
-        help='SELECT * FROM mytable')],
+        help='SELECT statement, any JOINs allowed, e.g. SELECT * FROM mytable',
+        show_default=False)],
     ds_name: dsarg,
     ):
 
@@ -307,8 +341,13 @@ def dbimport(
 sashimi upload file.json mydataset\n
 ~~~""")
 def upload(
-    file: Annotated[typer.FileText, typer.Argument(
+    #file: Annotated[typer.FileText, typer.Argument(
+    #    metavar='FILE.json',
+    #    help='JSON dataset to upload (list of dicts, or use --key)')],
+    file: Annotated[Path, typer.Argument(
         metavar='FILE.json',
+        file_okay=True,
+        dir_okay=True,
         help='JSON dataset to upload (list of dicts, or use --key)')],
     ds_name: dsarg,
     keypath: Annotated[Optional[list[str]], typer.Option(
@@ -323,6 +362,7 @@ def upload(
     """
    
     # read file
+
     dataset = json.load(file)
 
     if keypath:

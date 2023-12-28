@@ -109,13 +109,13 @@ class SashimiClient():
         r.raise_for_status()
         return r.text
 
-    def update(self, ds_name: str, field: str, update_expr: str, where_expr: str):
+    def update(self, ds_name: str, field: str, data: str, where_expr: str):
         url = self.ds_url(ds_name)
         payload = {
             'op': 'update',
-            'update': field,
+            'update_field': field,
             'expr': where_expr,
-            'update_expr': update_expr
+            'update_data': data
         }
         r = requests.patch(url, data=json.dumps(payload), headers=self.headers)
         r.raise_for_status()
