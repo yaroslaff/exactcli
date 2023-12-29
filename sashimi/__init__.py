@@ -1,7 +1,9 @@
 import requests
 from urllib.parse import urljoin
 from typing import List
+from pathlib import Path
 import json
+import yaml
 
 __version__ = '0.0.1'
 
@@ -23,6 +25,9 @@ class SashimiClient():
     
     def ds_url(self, ds_name):        
         return urljoin(self.project_url + '/', ds_name)
+    
+    def ds_config_url(self, ds_name):        
+        return urljoin(self.ds_url(ds_name) + '/', 'config')
 
     def info(self):
         headers = self.headers
@@ -127,5 +132,27 @@ class SashimiClient():
             'data': json.dumps(data)
         }
         r = requests.put(url, data=json.dumps(payload), headers=self.headers)
+        r.raise_for_status()
+        return r.text
+
+    def get_ds_config(self, ds_name: str):
+        url = self.ds_config_url(ds_name)
+        r = requests.get(url, headers=self.headers)
+        r.raise_for_status()
+        return r.text
+
+    def set_ds_config(self, ds_name: str, path: Path):
+        url = self.ds_config_url(ds_name)
+        
+        # test load
+        #with open(path) as fh:
+        #    yaml.safe_load(fh)
+            
+        headers = self.headers
+        del headers['Content-Type']
+
+        with open(path) as fh:
+            r = requests.post(url, headers=headers, data=fh)
+
         r.raise_for_status()
         return r.text

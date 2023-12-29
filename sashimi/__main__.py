@@ -1,5 +1,6 @@
 import os
 import json
+import yaml
 import datetime
 import dotenv
 import sys
@@ -41,6 +42,7 @@ dsarg = Annotated[str, typer.Argument(
 
 panel_write="'Write' commands (rarely needed, use upload/import instead)"
 panel_main="Main commands, each has its own help, e.g. sashimi upload --help"
+panel_config="Working with dataset configs"
 
 @app.command(rich_help_panel=panel_main)
 def rm(ds: dsarg):
@@ -339,6 +341,40 @@ def dbimport(
 
 
    
+@app.command(rich_help_panel=panel_config, help='Get dataset config',
+             name="",
+             epilog="""~~~shell\n
+sashimi getconfig mydataset\n
+~~~""")
+def getconfig(ds_name: dsarg,
+    config: Annotated[Path, typer.Option('-w',
+    metavar='CONFIG.yaml',
+    help='Upload yaml config for dataset')] = None,
+    ):
+    config_data = sashimi.get_ds_config(ds_name)
+    if config:
+        with open(config, "w")as fh:
+            fh.write(config_data)
+    else:
+        print(config_data)
+
+
+@app.command(rich_help_panel=panel_config, help='Set dataset config',
+             epilog="""~~~shell\n
+sashimi setconfig mydataset\n
+~~~""")
+def setconfig(ds_name: dsarg,
+        config: Annotated[Path, typer.Argument(
+        metavar='CONFIG.yaml',
+        help='Upload yaml config for dataset')],
+):        
+    try:
+        result = sashimi.set_ds_config(ds_name, path=config)
+    except yaml.YAMLError as e:
+        err_console.print(e)
+        sys.exit(1)
+    print(result)
+    
 
 
 @app.command(rich_help_panel=panel_main, help='Upload JSON dataset to Sashimi project',
@@ -384,12 +420,7 @@ def upload(
             sys.exit(1)
 
     print(f"# dataset: {len(dataset)} records")
-    try:
-        result = sashimi.put(ds_name, dataset=dataset)
-    except (ValueError, requests.RequestException) as e:
-        print(e)
-        print(e.response.text)
-        sys.exit(1)
+    result = sashimi.put(ds_name, dataset=dataset)
 
     # r = exact.query(ds_name, expr='True', limit=2)
     # print(len(r['result']))
@@ -401,11 +432,32 @@ def main():
 
     dotenv_file = os.getenv('SASHIMI_DOTENV', '.env')
     dotenv.load_dotenv(dotenv_file)
-    # get_args()
+        
+    # app()
+    command = typer.main.get_command(app)
 
-    # exact = SashimiClient(base_url=args.server, project=args.project, token=args.token)
-    # typer.rich_utils.Panel = Panel.fit
-    app()
+    project = None
+
+
+    try:
+        rc = command(standalone_mode=False)
+    except requests.exceptions.ConnectionError as e:
+        err_console.print(e)
+        err_console.print(f'Maybe wrong SASHIMI_PROJECT?')
+
+    except requests.RequestException as e:
+        err_console.print(e)
+        if e.response.status_code == 500:
+            pass
+        else:
+            err_console.print(f"{e.response.status_code} {e.response.text!r}")
+
+    except Exception as e:
+        err_console.print(type(e))
+        err_console.print(f"Got unexpected exception: {e}")
+
+
+
 
 if __name__ == '__main__':
     main()
