@@ -33,6 +33,8 @@ class SashimiClient():
         return urljoin(self.project_url + '/', '_config')
         # return 'http://localhost:8000/ds/q/sandbox/_config'
 
+
+
     def info(self):
         headers = self.headers
         del headers['Content-Type']
@@ -107,6 +109,17 @@ class SashimiClient():
         r = requests.post(url, data=json.dumps(payload), headers=headers)
         r.raise_for_status()
         return(r.json())
+
+    def named_query(self, ds_name: str, name: str):
+    
+        url = urljoin(self.ds_url(ds_name)+'/', name)
+        headers = {
+            'User-Agent': user_agent,
+        }
+
+        r = requests.get(url)
+        return r.json()
+
 
     def delete(self, ds_name: str, expr: str): 
         url = self.ds_url(ds_name)

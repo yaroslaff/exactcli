@@ -240,6 +240,32 @@ def query(
         print(r)
 
 
+@app.command(rich_help_panel=panel_main,
+             help="Run named query",
+             epilog="""~~~shell\n
+    # run 'sale' query (e.g. products with some flag is True):\n
+    sashimi query products sale\n\n\n
+    ~~~"""
+)
+def named(
+        ds:dsarg,
+        name: Annotated[str, typer.Argument(
+            help='run pre-configured named search (if configured in dataset config)',
+        )] = 'index',
+        result: Annotated[bool, typer.Option(
+            '-r / ', '--result / ',
+            help='print results only',
+            show_default=False,
+            )] = False,
+):
+    r = sashimi.named_query(ds_name=ds, name=name)
+    if result:
+        print(r['result'])
+    else:
+        print(r)
+
+
+
 @app.callback(
         context_settings={"help_option_names": ["-h", "--help"]})
 
@@ -491,7 +517,7 @@ def main():
         rc = command(standalone_mode=False)
     except requests.exceptions.ConnectionError as e:
         err_console.print(e)
-        err_console.print(f'Maybe wrong SASHIMI_PROJECT?')
+        err_console.print(f'Maybe wrong SASHIMI_PROJECT or server is offline?')
 
     except requests.RequestException as e:
         err_console.print(e)
