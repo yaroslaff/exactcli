@@ -7,6 +7,8 @@ import sys
 import time
 import requests
 import typer
+import click
+
 from pathlib import Path
 from typing_extensions import Annotated
 from typing import Optional
@@ -42,7 +44,7 @@ dsarg = Annotated[str, typer.Argument(
 
 panel_write="'Write' commands (rarely needed, use upload/import instead)"
 panel_main="Main commands, each has its own help, e.g. sashimi upload --help"
-panel_config="Working with dataset configs"
+panel_config="Dataset and project configs"
 
 @app.command(rich_help_panel=panel_main)
 def rm(ds: dsarg):
@@ -263,7 +265,6 @@ def info():
     print(json.dumps(result, sort_keys=True, indent=4))
 
 
-
 @app.command(name='import', rich_help_panel=panel_main,
              help='Upload database content to Sashimi project',
              epilog="""
@@ -291,6 +292,12 @@ def dbimport(
         help='SELECT statement, any JOINs allowed, e.g. SELECT * FROM mytable',
         show_default=False)],
     ds_name: dsarg,
+    secret: Annotated[Optional[str], typer.Option(
+        '-s', '--secret',
+        metavar='SECRET',
+        help='secret for ds (only for sandbox projects)',
+        show_default=False,
+        )] = None
     ):
 
     """
@@ -331,7 +338,7 @@ def dbimport(
 
     print(f"# Loaded from db dataset of {len(dataset)} records in {time.time() - import_start:.2f} seconds")
     try:
-        result = sashimi.put(ds_name, dataset=dataset)
+        result = sashimi.put(ds_name, dataset=dataset, secret=secret)
     except (ValueError, requests.RequestException) as e:
         print(e)
         print(e.response.text)
@@ -349,7 +356,7 @@ sashimi getconfig mydataset\n
 def getconfig(ds_name: dsarg,
     config: Annotated[Path, typer.Option('-w',
     metavar='CONFIG.yaml',
-    help='Upload yaml config for dataset')] = None,
+    help='Save dataset config to YAML file')] = None,
     ):
     config_data = sashimi.get_ds_config(ds_name)
     if config:
@@ -357,6 +364,25 @@ def getconfig(ds_name: dsarg,
             fh.write(config_data)
     else:
         print(config_data)
+
+@app.command(rich_help_panel=panel_config, help='Get project config',
+             name="",
+             epilog="""~~~shell\n
+sashimi getpconfig\n
+sashimi getpconfig -w myproject.yaml\n
+~~~""")
+def getpconfig(
+    config: Annotated[Path, typer.Option('-w',
+    metavar='CONFIG.yaml',
+    help='Save project config to yaml config ')] = None,
+    ):
+    config_data = sashimi.get_project_config()
+    if config:
+        with open(config, "w")as fh:
+            fh.write(config_data)
+    else:
+        print(config_data)
+
 
 
 @app.command(rich_help_panel=panel_config, help='Set dataset config',
@@ -375,6 +401,20 @@ def setconfig(ds_name: dsarg,
         sys.exit(1)
     print(result)
     
+@app.command(rich_help_panel=panel_config, help='Set project config',
+             epilog="""~~~shell\n
+sashimi setpconfig \n
+~~~""")
+def setpconfig(config: Annotated[Path, typer.Argument(
+        metavar='CONFIG.yaml',
+        help='Upload yaml config for project')],
+):        
+    try:
+        result = sashimi.set_project_config(path=config)
+    except yaml.YAMLError as e:
+        err_console.print(e)
+        sys.exit(1)
+    print(result)
 
 
 @app.command(rich_help_panel=panel_main, help='Upload JSON dataset to Sashimi project',
@@ -390,7 +430,15 @@ def upload(
         '--key',
         metavar='KEY',
         help='list of keys to dive-in to dataset in JSON',
+        show_default=False,
+        )] = None,
+    secret: Annotated[Optional[str], typer.Option(
+        '-s', '--secret',
+        metavar='SECRET',
+        help='secret for ds (only for sandbox projects)',
+        show_default=False,
         )] = None
+
     ):
 
     """
@@ -420,7 +468,7 @@ def upload(
             sys.exit(1)
 
     print(f"# dataset: {len(dataset)} records")
-    result = sashimi.put(ds_name, dataset=dataset)
+    result = sashimi.put(ds_name, dataset=dataset, secret=secret)
 
     # r = exact.query(ds_name, expr='True', limit=2)
     # print(len(r['result']))
@@ -451,6 +499,9 @@ def main():
             pass
         else:
             err_console.print(f"{e.response.status_code} {e.response.text!r}")
+
+    except click.ClickException as e:
+        err_console.print(e)
 
     except Exception as e:
         err_console.print(type(e))
