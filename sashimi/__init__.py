@@ -27,7 +27,13 @@ class SashimiClient():
         return urljoin(self.project_url + '/', ds_name)
     
     def ds_config_url(self, ds_name):        
-        return urljoin(self.ds_url(ds_name) + '/', 'config')
+        return urljoin(self.ds_url(ds_name) + '/', '_config')
+
+    def project_config_url(self):        
+        return urljoin(self.project_url + '/', '_config')
+        # return 'http://localhost:8000/ds/q/sandbox/_config'
+
+
 
     def info(self):
         headers = self.headers
@@ -48,12 +54,12 @@ class SashimiClient():
         r.raise_for_status()        
         return r.text
 
-    def put(self, ds_name: str, dataset: list):
+    def put(self, ds_name: str, dataset: list, secret: str = None):
 
         if ds_name is None or dataset is None:
             raise ValueError('Need both ds_name and dataset')
 
-        payload = dict(ds=dataset, name=ds_name)
+        payload = dict(ds=dataset, name=ds_name, secret = secret)
 
         r = requests.put(self.project_url, headers=self.headers, data=json.dumps(payload))
         r.raise_for_status()
@@ -104,6 +110,17 @@ class SashimiClient():
         r.raise_for_status()
         return(r.json())
 
+    def named_query(self, ds_name: str, name: str):
+    
+        url = urljoin(self.ds_url(ds_name)+'/', name)
+        headers = {
+            'User-Agent': user_agent,
+        }
+
+        r = requests.get(url)
+        return r.json()
+
+
     def delete(self, ds_name: str, expr: str): 
         url = self.ds_url(ds_name)
         payload = {
@@ -148,6 +165,24 @@ class SashimiClient():
         #with open(path) as fh:
         #    yaml.safe_load(fh)
             
+        headers = self.headers
+        del headers['Content-Type']
+
+        with open(path) as fh:
+            r = requests.post(url, headers=headers, data=fh)
+
+        r.raise_for_status()
+        return r.text
+
+    def get_project_config(self):
+        url = self.project_config_url()
+        r = requests.get(url, headers=self.headers)
+        r.raise_for_status()
+        return r.text
+
+    def set_project_config(self, path: Path):
+        url = self.project_config_url()
+        
         headers = self.headers
         del headers['Content-Type']
 
