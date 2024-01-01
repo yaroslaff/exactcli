@@ -5,7 +5,7 @@ from pathlib import Path
 import json
 import yaml
 
-__version__ = '0.0.1'
+__version__ = '0.0.2'
 
 user_agent = f'sashimi_client/{__version__}'
 
