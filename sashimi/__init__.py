@@ -5,7 +5,7 @@ from pathlib import Path
 import json
 import yaml
 
-__version__ = '0.0.2'
+__version__ = '0.0.3'
 
 user_agent = f'sashimi_client/{__version__}'
 
@@ -36,7 +36,7 @@ class SashimiClient():
 
 
     def info(self):
-        headers = self.headers
+        headers = dict(self.headers)
         del headers['Content-Type']
 
         r = requests.get(self.project_url, headers=headers)
@@ -103,7 +103,7 @@ class SashimiClient():
 
         # print(payload)
 
-        headers = self.headers
+        headers = dict(self.headers)
         del headers['Authorization']
 
         r = requests.post(url, data=json.dumps(payload), headers=headers)
@@ -165,7 +165,7 @@ class SashimiClient():
         #with open(path) as fh:
         #    yaml.safe_load(fh)
             
-        headers = self.headers
+        headers = dict(self.headers)
         del headers['Content-Type']
 
         with open(path) as fh:
@@ -183,7 +183,7 @@ class SashimiClient():
     def set_project_config(self, path: Path):
         url = self.project_config_url()
         
-        headers = self.headers
+        headers = dict(self.headers)
         del headers['Content-Type']
 
         with open(path) as fh:
