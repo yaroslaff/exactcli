@@ -46,7 +46,13 @@ panel_write="'Write' commands (rarely needed, use upload/import instead)"
 panel_main="Main commands, each has its own help, e.g. sashimi upload --help"
 panel_config="Dataset and project configs"
 
-@app.command(rich_help_panel=panel_main)
+@app.command(rich_help_panel=panel_main,
+             help='Remove dataset from Sashimi',
+            epilog="""~~~shell\n
+sashimi rm products\n
+~~~
+"""
+             )
 def rm(ds: dsarg):
     """ Remove dataset from Sashimi """
     try:
@@ -58,10 +64,16 @@ def rm(ds: dsarg):
 
     print(result)
 
-@app.command(rich_help_panel=panel_write)
+@app.command(rich_help_panel=panel_write,
+             help='Delete records from Sashimi dataset',
+            epilog="""~~~shell\n
+sashimi delete products 'id==1'\n
+~~~
+"""
+)
 def delete(ds: dsarg,       
-    expr: Annotated[str, typer.Option('--expr', '-e',
-        help='Pythonic expression, instead of filter. E.g.: brand="Apple" and price<=100',        
+    expr: Annotated[str, typer.Argument(
+        help='Pythonic expression',
         )],
     ):
     """ Delete records from Sashimi dataset """
@@ -77,31 +89,28 @@ def delete(ds: dsarg,
 @app.command(rich_help_panel=panel_write,
             help='Update records in Sashimi dataset',
             epilog="""~~~shell\n
-            # product with id 42 is out of stock!\n
-            sashimi update products onstock False 'id=42'\n
-            sashimi update products price price+20 'id=123'\n
-            ~~~
+sashimi update products 'id==1' '{"price": 125, "stock": 200}'\n
+~~~
 """
              )
 def update(ds: dsarg,
-    field: Annotated[str, 
-                     typer.Argument(help='field to update, e.g. "price" or "onstock"', show_default=False)],
-    data: Annotated[str, typer.Argument(
-        help='New value (json) for this field in selected records. E.g.: 200 or False or "New title"',
-        show_default=False,
-        )],
     where: Annotated[str, typer.Argument(
         help='Pythonic filter expression (like SQL WHERE). E.g.: \'brand="Apple" and price<=100\'',
         show_default=False,
         )],
+    data: Annotated[str, typer.Argument(
+        help='New value (json) for this field in selected records. E.g.: {"price": 200, "title": "New title"}',
+        show_default=False,
+        )],
     ):
     """ Update records in Sashimi dataset 
-    Examples:
-    update products onstock False 'id=12'
-    update products price 99.99 'id=12'
+    ~~~shell
+    # update record, set new values for two fields
+    sashimi update products 'id==1' '{"price": 125, "stock": 0}'
+    ~~~
     """
     try:
-        result = sashimi.update(ds_name=ds, field=field, where_expr=where, data=data)
+        result = sashimi.update(ds_name=ds, expr=where, data=data)
     except requests.RequestException as e:        
         err_console.print(f'{e!r}')
         err_console.print(f'{e.response.text!r}')

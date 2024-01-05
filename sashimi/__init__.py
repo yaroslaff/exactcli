@@ -5,7 +5,7 @@ from pathlib import Path
 import json
 import yaml
 
-__version__ = '0.0.3'
+__version__ = '0.0.4'
 
 user_agent = f'sashimi_client/{__version__}'
 
@@ -131,13 +131,12 @@ class SashimiClient():
         r.raise_for_status()
         return r.text
 
-    def update(self, ds_name: str, field: str, data: str, where_expr: str):
+    def update(self, ds_name: str, expr: str, data: str):
         url = self.ds_url(ds_name)
         payload = {
             'op': 'update',
-            'update_field': field,
-            'expr': where_expr,
-            'update_data': data
+            'expr': expr,
+            'update': data
         }
         r = requests.patch(url, data=json.dumps(payload), headers=self.headers)
         r.raise_for_status()
