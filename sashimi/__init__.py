@@ -5,7 +5,7 @@ from pathlib import Path
 import json
 import yaml
 
-__version__ = '0.0.4'
+__version__ = '0.0.5'
 
 user_agent = f'sashimi_client/{__version__}'
 
@@ -157,7 +157,10 @@ class SashimiClient():
         r.raise_for_status()
         return r.text
 
-    def set_ds_config(self, ds_name: str, path: Path):
+    def set_ds_config(self, ds_name: str, path: Path = None, config: dict = None):
+        """
+        set new config for dataset. Config is either in path or in config
+        """
         url = self.ds_config_url(ds_name)
         
         # test load
@@ -167,8 +170,12 @@ class SashimiClient():
         headers = dict(self.headers)
         del headers['Content-Type']
 
-        with open(path) as fh:
-            r = requests.post(url, headers=headers, data=fh)
+
+        if config:
+            r = requests.post(url, headers=headers, data=yaml.dump(config))
+        else:
+            with open(path) as fh:
+                r = requests.post(url, headers=headers, data=fh)
 
         r.raise_for_status()
         return r.text
@@ -179,14 +186,24 @@ class SashimiClient():
         r.raise_for_status()
         return r.text
 
-    def set_project_config(self, path: Path):
+    def set_project_config(self, path: Path = None, config: dict = None):
+        """
+        set new config for project. Config is either in path or in config
+        """
         url = self.project_config_url()
         
+        assert path or config
+
         headers = dict(self.headers)
         del headers['Content-Type']
 
-        with open(path) as fh:
-            r = requests.post(url, headers=headers, data=fh)
+
+        if config:
+            r = requests.post(url, headers=headers, data=yaml.dump(config))
+        else:
+            with open(path) as fh:
+                r = requests.post(url, headers=headers, data=fh)
+
 
         r.raise_for_status()
         return r.text
