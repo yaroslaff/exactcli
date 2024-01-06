@@ -1,6 +1,14 @@
-# sashimi-cli
+# Sashimi CLI tool for Sashimi headless CMS
 
-CLI tool and python module to work with Sashimi headless CMS
+CLI tool and python module to work with Sashimi headless CMS.
+
+## What is Sashimi CMS
+
+Sashimi CMS is very fast and secure REST API to operate with public data (probably, this is 90% of what usual backend does), search and retrieve records. 
+You upload your JSON or database tables to Sashimi in seconds and you get working backend which you can query with JavaScript fetch() from your website!
+
+If you can do something with Sashimi CMS (in seconds), you do not need to develop backend for this feature. No code = No bugs = No vulnerabilities.
+Move 90% of your backend functions to Sashimi, and save 90% of time/money on development.
 
 ## Install
 
@@ -69,6 +77,10 @@ sashimi query products id=1
     ],
     'time': 0.0
 }
+
+# find something American! (-e for Pythonic Expressions)
+sashimi query products -e '"American" in title'
+...
 
 # find 5 cheapest smartphones, get only title and price
 sashimi query products 'category="smartphones"' --limit=5 --sort=price -f title -f price
