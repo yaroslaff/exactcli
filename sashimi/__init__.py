@@ -6,7 +6,7 @@ import json
 import yaml
 import os
 
-__version__ = '0.0.7'
+__version__ = '0.0.8'
 
 user_agent = f'sashimi_client/{__version__}'
 
@@ -132,7 +132,7 @@ class SashimiClient():
         r.raise_for_status()
         return r.text
 
-    def update(self, ds_name: str, expr: str, data: str):
+    def update(self, ds_name: str, expr: str, data: dict):
         url = self.ds_url(ds_name)
         payload = {
             'op': 'update',

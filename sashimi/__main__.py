@@ -109,8 +109,10 @@ def update(ds: dsarg,
     sashimi update products 'id==1' '{"price": 125, "stock": 0}'
     ~~~
     """
+
+
     try:
-        result = sashimi.update(ds_name=ds, expr=where, data=data)
+        result = sashimi.update(ds_name=ds, expr=where, data=json.loads(data))
     except requests.RequestException as e:        
         err_console.print(f'{e!r}')
         err_console.print(f'{e.response.text!r}')
