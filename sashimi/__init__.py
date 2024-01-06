@@ -4,8 +4,9 @@ from typing import List
 from pathlib import Path
 import json
 import yaml
+import os
 
-__version__ = '0.0.6'
+__version__ = '0.0.7'
 
 user_agent = f'sashimi_client/{__version__}'
 
@@ -13,9 +14,9 @@ user_agent = f'sashimi_client/{__version__}'
 class SashimiClient():
     base_url = None
     
-    def __init__(self, project_url: str, token: str):
+    def __init__(self, project_url: str, token: str = None):
         self.project_url = project_url
-        self.token = token
+        self.token = token or os.getenv('SASHIMI_TOKEN')
 
         self.headers = {
             'User-Agent': user_agent,
